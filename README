@@ -1,0 +1,66 @@
+If ESP32 board has a chip CH 210x on it install driver from 
+https://www.silabs.com/developer-tools/usb-to-uart-bridge-vcp-drivers?tab=downloads
+
+
+Memo snipets
+============
+#define QUEUE_LENGTH 10
+#define ITEM_SIZE sizeof(SensorData)
+
+QueueHandle_t dataQueue;
+
+typedef struct {
+    float ds18b20_temp[4];
+    float am2302_temp;
+    float am2302_humidity;
+    float voltage;
+} SensorData;
+
+=================
+setup(){
+    ...
+    dataQueue = xQueueCreate(QUEUE_LENGTH, ITEM_SIZE);
+if (dataQueue == NULL) {
+    // Handle queue creation failure
+}
+}
+==============
+Measurements task
+void MeasurementsTask(void *pvParameters) {
+    SensorData data;
+    while (1) {
+        // Read from sensors
+        data.ds18b20_temp[0] = readDS18B20(0);
+        // Repeat for other sensors...
+        data.am2302_temp = readAM2302Temperature();
+        data.am2302_humidity = readAM2302Humidity();
+        data.voltage = readVoltage();
+
+        // Send data to the queue
+        xQueueSend(dataQueue, &data, portMAX_DELAY);
+
+        vTaskDelay(pdMS_TO_TICKS(1000)); // Run every 1 second
+    }
+}
+=============
+Logging task
+void LoggingTask(void *pvParameters) {
+    SensorData receivedData;
+    while (1) {
+        if (xQueueReceive(dataQueue, &receivedData, portMAX_DELAY)) {
+            logToStorage(receivedData);
+        }
+    }
+}
+============
+pump task
+void PumpTask(void *pvParameters) {
+    SensorData receivedData;
+    while (1) {
+        if (xQueueReceive(dataQueue, &receivedData, portMAX_DELAY)) {
+            float pwmValue = calculatePWM(receivedData);
+            analogWrite(PUMP_PIN, pwmValue);
+        }
+    }
+}
+==============
